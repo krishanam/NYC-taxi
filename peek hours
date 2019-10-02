@@ -1,0 +1,38 @@
+conda install s3fs
+import pandas as pd
+data = pd.read_csv("s3://nyc-tlc/misc/taxi _zone_lookup.csv")
+data.head(6)
+
+j, chunksize = 1, 100000
+for month in range(1,12):
+    fp = "s3://nyc-tlc/misc/taxi _zone_lookup.csv"
+    for df in pd.read_csv(fp, chunksize=chunksize, iterator=True):
+        df = df.rename(columns={c: c.replace(' ', '_') for c in df.columns})
+        df['pickup_hour'] = [x[11:13] for x in df['tpep_pickup_datetime']]
+        df['dropoff_hour'] = [x[11:13] for x in df['tpep_dropoff_datetime']]
+        df.index += j
+        df.to_sql('table_record', nyc_database, if_exists='append')
+        j = df.index[-1] + 1
+del df
+
+df_pu = pd.read_sql_query('SELECT pickup_hour AS time, count(*) AS PUcount \
+                        FROM table_record \
+                        GROUP BY pickup_hour', nyc_database)
+df_do = pd.read_sql_query('SELECT dropoff_hour AS time, count(*) AS DOcount \
+                        FROM table_record \
+                        GROUP BY dropoff_hour', nyc_database)
+df_q2 = df_pu.merge(df_do, on="time")
+
+
+
+
+template = pd.DataFrame(["{0:0=2d}".format(x) for x in range(0,24)], columns=["time"])
+df_q2 = df_q2.join(template.set_index("time"), how = 'outer', on=["time"]).fillna(0) \
+                .groupby(["time"], as_index=False) \
+                .agg({'PUcount': 'sum', 'DOcount': 'sum'}) \
+                .rename(columns = {'PUcount':'Pick-ups', 'DOcount': 'Drop-offs'}) \
+                .sort_values(by='time')
+
+ax = df_q2.plot(x='time', y=['Pick-ups', 'Drop-offs'], kind='line', style="-o", figsize=(15,5))
+ax.set_ylabel("count")
+plt.show()
