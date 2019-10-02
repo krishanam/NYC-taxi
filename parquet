@@ -1,0 +1,8 @@
+conda install gcsfs
+import pyarrow.parquet as pq
+import gcsfs
+fs = gcsfs.GCSFileSystem(token='anon')
+f = fs.open('gcs://anaconda-public-data/nyc-taxi/nyc.parquet/part.0.parquet')
+table = pq.read_table(f)
+table.to_pandas().head(16)
+
